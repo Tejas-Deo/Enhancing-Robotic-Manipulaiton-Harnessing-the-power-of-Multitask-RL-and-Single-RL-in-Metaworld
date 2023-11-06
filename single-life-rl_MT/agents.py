@@ -256,7 +256,7 @@ class Discriminator(SACAgent):
         # print(idx)
 
         # ipdb.set_trace()
-
+        # print('Update')
 
 
         num_pos = obs_pos.shape[0]

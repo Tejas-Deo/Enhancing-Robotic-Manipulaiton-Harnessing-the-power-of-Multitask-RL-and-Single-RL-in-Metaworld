@@ -28,11 +28,11 @@ import matplotlib.pyplot as plt
 matplotlib.rcParams.update({'font.size': 12})
 
 from SAC import Agent, AgentEmbed
-
+import pdb
 import pickle
 torch.backends.cudnn.benchmark = True
 
-
+# Define the environments used for training the MT SAC 
 env_names = ['sawyer_pick_place', 
              'sawyer_window_open', 
              'sawyer_window_close', 
@@ -46,22 +46,16 @@ env_names = ['sawyer_pick_place',
 d = [[np.sin(k*p) for k in range(1,len(env_names)+1)] for p in range(1,len(env_names)+1)]
 
 # One Hot Encoding for the tasks
-# d = [[int(i == j) for i in range(len(env_names))] for j in range(len(env_names))]
+# d_one_hot = [[int(i == j) for i in range(len(env_names))] for j in range(len(env_names))]
 
 env_to_task = {}
 
 for i in range(len(env_names)):
     env_to_task[env_names[i]] = d[i]
 
-# task = "sawyer_open_window"
-# Do not use this
-# env_to_task['sawyer_pick_place'] = np.array([0,1])
-# env_to_task['sawyer_open_window'] = np.array([1,0])
 
-# TODO: Make agent to SAC 
+# Initialize the SAC agent for the SLRL setting
 def make_agent(obs_spec, action_spec, cfg, env_name):
-    
-   
     
     cfg.obs_shape = obs_spec.shape
     cfg.action_shape = action_spec.shape
@@ -78,6 +72,7 @@ def make_agent(obs_spec, action_spec, cfg, env_name):
                 from_vision=cfg.from_vision,
                 env_name=env_name)
     
+# Initialize the discriminator for the SLRL setting
 def make_discriminator(obs_spec, action_spec, cfg, env_name, discrim_type, mixup, q_weights, num_discrims):
     cfg.obs_shape = obs_spec.shape
     cfg.action_shape = action_spec.shape
@@ -100,6 +95,8 @@ def make_discriminator(obs_spec, action_spec, cfg, env_name, discrim_type, mixup
             q_weights=q_weights,
             num_discrims=num_discrims,)
 
+
+# The workspace is used for the SLRL training and logging the whole experiment
 class Workspace:
     def __init__(self, cfg, orig_dir):
         self.work_dir = Path.cwd()
@@ -115,12 +112,12 @@ class Workspace:
         self.obs_spec = specs.Array((46,), np.float32, 'observation')
         
         self.setup()
-
         
         if cfg.task_encoding == 'trainable':
             self.agent = AgentEmbed(env = self.train_env)
         else:
             self.agent = Agent(env = self.train_env)
+
         # Change this to observation + taskid
         # Discriminator type is state or state-action pair
         if self.cfg.use_discrim:
@@ -143,6 +140,8 @@ class Workspace:
         # create logger
         self.logger = Logger(self.work_dir, use_tb=self.cfg.use_tb)
         self.train_env, self.eval_env, self.reset_states, self.goal_states, self.forward_demos = env_loader.make(self.cfg.env_name, self.cfg.frame_stack, self.cfg.action_repeat, self.cfg.resets, orig_dir=self.orig_dir)
+        
+        # Not used as the SAC agent is trained using different code
         if self.cfg.resets:
             _, self.train_env, self.reset_states, self.goal_states, self.forward_demos = env_loader.make(self.cfg.env_name, self.cfg.frame_stack, self.cfg.action_repeat, self.cfg.resets, orig_dir=self.orig_dir)
     
@@ -166,7 +165,7 @@ class Workspace:
                                                time_step=self.cfg.time_step)
         self.prior_buffers = []
         
-        # We have a single discriminator for now
+        # We have a single discriminator but still have kept the for loop to allow for more if needed 
         for _ in range(self.cfg.num_discrims):
             self.prior_buffers.append(SimpleReplayBuffer(data_specs,
                                                        self.cfg.prior_buffer_size, 
@@ -211,7 +210,6 @@ class Workspace:
         
 
     def train(self, snapshot_dir=None):
-        # predicates
         train_until_step = utils.Until(self.cfg.online_steps, 
                                        self.cfg.action_repeat)
         seed_until_step = utils.Until(self.cfg.num_init_frames,
@@ -223,36 +221,26 @@ class Workspace:
             time_step = self.eval_env.reset()
             _, self.eval_env_pretraining, _, _, _ = env_loader.make(self.cfg.env_name, self.cfg.frame_stack, self.cfg.action_repeat, self.cfg.resets, orig_dir=self.orig_dir)
         else:
-            # TODO: reset error here
             self.train_env._set_task_called = True
             time_step = self.train_env.reset()
         dummy_action = time_step.action
 
         if self.forward_demos and (not self.cfg.rl_pretraining or self.cfg.use_demos):
-            # This adds offline_data from the environment setup itself.
-            # Adds the offline_data to the replay_storage and the prior_buffer
             self.replay_storage_f.add_offline_data(self.forward_demos, dummy_action, env_name=self.cfg.env_name)
             
             for buffer in self.prior_buffers:
                 _ = buffer.add_offline_data(self.forward_demos, dummy_action, env_name=self.cfg.env_name)
         
-        # Iterator for the prior buffer
         prior_iters = []
         
         for d in range(self.cfg.num_discrims):
             prior_iters.append(iter(self.prior_buffers[d])) 
-        
-        # print('WHAT IS THIS PRIOR')
-        # print(prior_iters)
-
-
-        # Populated during the online run
+     
         online_iter = iter(self.online_buffer)
-        # This is the agent and the buffer
+        
         cur_agent = self.agent
         cur_buffer = self.replay_storage_f
         
-        # What is this used ?
         cur_iter = self.forward_iter
 
         if self.cfg.save_train_video:
@@ -260,93 +248,66 @@ class Workspace:
     
         metrics = None
         episode_step, episode_reward = 0, 0
-        # distances = []
-        # num_stuck = 0
         past_timesteps = []
         online_rews = [] # all online rewards
         online_qvals = [] # all online qvals
         end_effector = [] # record the arm position
 
-
+        # To log the end effector, starting positions and the whole trajectory of the arm
         logs = {}        
-
-
         cur_reward = torch.tensor(0.0).cuda()
         counter = 0
-        # initial_back = 0. # For cheetah
         while train_until_step(self.global_step):
             
             '''Start single episode'''
             if self.global_step == 0:
                 print("Starting single episode")
+                # Reset the training environment to ensure that the goal and the object positions are set according to our novelties
                 time_step = self.train_env.reset()
-
 
                 logs['starting_gripper_pos'] = time_step.observation[0:3]
                 logs['starting_object_pos'] = time_step.observation[4:7]
-                logs['goal_position'] = time_step.observation[-3:]
-            
-
+                logs['goal_position'] = self.train_env.gym_env._target_pos
+                logs['goal_position_final'] = self.train_env.gym_env._get_pos_goal()
+                # print(self.train_env.gym_env._target_pos)
+                # logs['goal_position'] = time_step.observation[36:39]
                 logs['observation'] = []
-                # print(time_step.observation.shape, np.array([1,0]).reshape((-1,)).shape )
+
+                # Append the task ID to the current observation using the dictionary specified after the imports
+                # 
+                #  
                 time_step =  ExtendedTimeStep(
                                                 observation=np.concatenate( (time_step.observation, env_to_task[self.cfg.env_name]), axis = 0 ),       step_type=time_step.step_type,
                                                 action=time_step.action,
                                                 reward=time_step.reward,
                                                 discount=time_step.discount
                                             )
-                
-                # print(time_step.observation.shape)
+
+
                 cur_buffer.add(time_step)
-                # exit()
-                # x_progress = []
-                # y_progress = []
-                # agent_x = []
-                # agent_y = []
-                
-                if self.cfg.rl_pretraining or True:
-                    # Important step here
-                    # print('Here')
+
+                # Basically used to pretrain the algorithm used to the environment for few hundred step initially. In out approach we train the MT-SAC online using the prior data and the online buffer udpated as the agent takes actions                
+                if self.cfg.rl_pretraining:
                     min_q, max_q = cur_buffer.load_buffer(f'{snapshot_dir}/', 
                                                           self.cfg.prior_buffer_size, 
                                                           self.cfg.env_name, 
                                                           agent = self.agent,
                                                           taskid = env_to_task[self.cfg.env_name])
-                    # print('Q values')
-                    # print(min_q, max_q)
                     if self.prior_buffers[0].__len__() == 0:
                         _, _ = self.prior_buffers[0].load_buffer(f'{snapshot_dir}/', self.cfg.prior_buffer_size, agent = self.agent, taskid=env_to_task[self.cfg.env_name])
                     
             '''Logging and eval'''
             criteria = self.global_step % 500 == 0 
-            # if self.cfg.resets and time_step.last():
-            #     episode_step, episode_reward = 0, 0
-            #     time_step = self.train_env.reset()
-            #     cur_buffer.add(time_step)
+            # Since the metaworld uses a step size of 500, update the global step as the agent takes 500 steps in the online setting
             if criteria: 
-                if self.global_step == 0:
-                    episode_step, episode_reward = 0, 0
-                self._global_episode += 1
-                
-
-
+               
+                # Always update the logs and save the experiment data
                 with open(str(self.work_dir / 'trajectory_') + self.cfg.env_name + '.pkl', 'wb') as f:
                     
                     logs['observations'] = end_effector
                     pickle.dump(logs, f) 
                     
-                    # pickle.dump(np.array(end_effector), f) 
-
-                # if self.global_step % 1000 == 0 and self.global_step > 0:
-                    # if self.cfg.save_train_video:
-                        # eval('export LD_PRELOAD=')
-                        # print('Saving Video Frame and GIF')
-                        # self.save_im(self.train_env.render(mode = 'rgb_array',offscreen = False), f'{self.work_dir}/train_video/train{self.global_frame}.png')
-                        # self.train_video_recorder.save(f'train{self.global_frame}.gif')
-                        # eval('export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libGLEW.so')
-                # wait until all the metrics schema is populated
                 if metrics is not None:
-                    # log stats
                     elapsed_time, total_time = self.timer.reset()
                     episode_frame = episode_step * self.cfg.action_repeat
                     with self.logger.log_and_dump_ctx(self.global_frame,
@@ -358,75 +319,52 @@ class Workspace:
                         log('episode', self.global_episode)
                         log('forward_buffer_size', len(self.replay_storage_f))
                         log('step', self.global_step)
+                        # log('cur_reward', cur_reward.detach().item())
                 
-                # try to save snapshot
-                if self.cfg.save_snapshot:
-                    self.save_snapshot()
                 
-             ##############################################################################################  
-            '''If online during single episode'''
+                if self.global_step % 500 == 0 :
+                    episode_step, episode_reward = 0, 0
+                self._global_episode += 1
+                
+             
+            # The main part of the single life RL online learning setting
             if self.global_step >= 0 or self.cfg.rl_pretraining:
                 '''Sample action'''
-                
-                # Critic is forzen and only act here
-                # print('Rendering Now')
-                # while True:    
-                
                 with torch.no_grad():
-                        # obs = np.append(time_step.observation, np.array([1,0])).astype("float32")
+                        # From the above timestep intialization, the observation has the correct shape. Pass directly to the MT-SAC model
                         obs=time_step.observation
-                        # print(obs)
+
+                        # Goal Masking for the SLRL Ablation Study
+                        obs[36:39] = np.array([0,0,0])
+                        # The agent return a sample action using the output mean and the standard deviation for calculating a stochastic action output.
+                        # Should take the mean action during the evaluation phase technically
                         action = cur_agent.choose_action(obs)
-                        # print(action)
-                        # Evaluation mode should use the mean action while training should use sample action
 
-                # Now the end_effector position is stored
+                # Update the end effector position in our logs
                 end_effector.append(obs[0:3])
-                
-                # print('Between this')
-                '''Take env step'''                           
-                if self.cfg.rl_pretraining and self.global_step < 0:
-                    time_step = self.eval_env.step(action)
-                    self.eval_env.render()
-                else:
-                    
-                    time_step = self.train_env.step(action)
+                # print('Step')
+                time_step = self.train_env.step(action)
+                self.train_env.render()
 
-                    self.train_env.render()
-                # time.sleep(0.1)
-                
-                # print(counter)
-
-                # if counter > 500:
-                #     exit()
-                # counter +=1
-                #This time_step has dimension 39
-                # print(time_step.observation.shape)
-                # time_step.observation = np.append(time_step.observation, np.array([1,0]))
                 time_step =  ExtendedTimeStep(
                                                 observation=np.concatenate( (time_step.observation, env_to_task[self.cfg.env_name]), axis = 0),       step_type=time_step.step_type,
                                                 action=time_step.action,
                                                 reward=time_step.reward,
                                                 discount=time_step.discount
                                             )
-                
-
-
+                # This is the original reward computed by the metaworld environment after taking the step in the environment
                 orig_reward = time_step.reward
 
+                # This is the total reward for the entire single life experiment
                 online_rews.append(cur_reward.detach().item())
+                
+                # Compute the Q-value for the observation using the critic target model to understand the qaulity/userfulness of the current position of the arm
                 with torch.no_grad():
                     Q1 = self.agent.critic_2(torch.FloatTensor(time_step.observation).view(1,-1).cuda(), torch.FloatTensor(time_step.action).view(1,-1).cuda())
-                    # obs = np.append(time_step.observation, np.array([1,0]))
-                    # Q1= self.agent.target_value(torch.FloatTensor(obs).cuda())
-                
                 online_qvals.append(Q1.detach().item())
                
-                success_criteria = False
-               
+                # Check if the agent completes the task
                 success_criteria = (time_step.step_type == 2)
-                
-
                 if success_criteria or self.global_step == self.cfg.online_steps - 1:
                     
                     time_step = ExtendedTimeStep(observation=time_step.observation,
@@ -435,80 +373,45 @@ class Workspace:
                                                  reward=time_step.reward,
                                                  discount=time_step.discount)
                     print("Completed task in steps", self.global_step, time_step)
-                   
-                    with open(str(self.work_dir / 'trajectory_') + self.cfg.env_name + '.pkl', 'wb') as f:
-                        
-                        
+
+                    with open(str(self.work_dir / 'trajectory_') + self.cfg.env_name + '.pkl', 'wb') as f:                        
                         logs['observations'] = end_effector
-                        # pickle.dump(np.array(end_effector), f) 
                         pickle.dump(logs, f) 
-
-
-
-
 
                     with open(f"{self.work_dir}/total_steps.txt", 'w') as f:
                         f.write(str(self.global_step))
-                    if self.cfg.save_train_video:
-                        self.train_video_recorder.save(f'train{self.global_step}.mp4')
-               
+                    
                     print('Total Steps', len(end_effector))
                     exit()
                     
-                episode_reward += orig_reward
-                if self.cfg.biased_update and self.global_step % self.cfg.biased_update == 0:
-                    # Use a biased TD update to control critic values
-                    # np.append( time_step.observation, np.array([0,1]))
-                    time_step = ExtendedTimeStep(observation = time_step.observation,
-                                             step_type=2,
-                                             action=action,
-                                             reward=orig_reward,
-                                             discount=time_step.discount)
-                
+                # Total episode reward
+                episode_reward += orig_reward                
                 # Add to buffer
-                if self.cfg.rl_pretraining and self.global_step < 0:
-                    self.prior_buffers[0].add(time_step)
-                else:
-                    cur_buffer.add(time_step)
-                    self.online_buffer.add(time_step)
+                cur_buffer.add(time_step)
+                self.online_buffer.add(time_step)
                 episode_step += 1
                 
-            if self.cfg.save_train_video and self.global_step < 50000:
-                self.train_video_recorder.record(self.train_env)
-
            ##############################################################################################    
             if self.cfg.use_discrim:
                 if self.global_step % self.cfg.discriminator.train_interval == 0 and self.online_buffer.__len__() > self.cfg.discriminator.batch_size:
+                    
                     for k in range(self.cfg.discriminator.train_steps_per_iteration):
-                        if self.cfg.rl_pretraining and self.cfg.q_weights:
-                       
-                            metrics = self.discriminator.update_discriminators(pos_replay_iter = prior_iters, 
-                                                                               neg_replay_iter = online_iter, 
-                                                                               val_function = self.agent.critic_1, 
-                                                                               current_val = cur_reward, 
-                                                                               current_obs = time_step, 
-                                                                               min_q = min_q, 
-                                                                               max_q = max_q, 
-                                                                               baseline=self.cfg.baseline,
-                                                                               task_id = env_to_task[self.cfg.env_name])
-                        else:
-                            metrics = self.discriminator.update_discriminators(pos_replay_iter = prior_iters, 
-                                                                               neg_replay_iter = online_iter, 
-                                                                               val_function = self.agent.critic_1, 
-                                                                               current_val = cur_reward, 
-                                                                               current_obs = time_step, 
-                                                                               min_q = min_q, 
-                                                                               max_q = max_q, 
-                                                                               task_id = env_to_task[self.cfg.env_name],
-                                                                               baseline = 0.1)
+                        metrics = self.discriminator.update_discriminators( pos_replay_iter = prior_iters, 
+                                                                            neg_replay_iter = online_iter, 
+                                                                            val_function = self.agent.critic_1, 
+                                                                            current_val = cur_reward, 
+                                                                            current_obs = time_step, 
+                                                                            min_q = min_q, 
+                                                                            max_q = max_q, 
+                                                                            task_id = env_to_task[self.cfg.env_name],
+                                                                            baseline = self.cfg.baseline)
                     self.logger.log_metrics(metrics, self.global_frame, ty='train')
 
             if not seed_until_step(self.global_step):
+
                 if self.cfg.use_discrim and self.online_buffer.__len__() > self.cfg.discriminator.batch_size:
                     trans_tuple, original_reward = self.discriminator.transition_tuple(cur_iter)
-              
                     metrics = cur_agent.learn(trans_tuple, self.global_step)
-                    
                     metrics['original_reward'] = original_reward.mean()
 
                     if len(past_timesteps) > 10: # for logging
@@ -526,9 +429,8 @@ class Workspace:
                     trans_tuple = (obs, action, reward, discount, next_obs, step_type, next_step_type)
                     
                     metrics = cur_agent.learn(trans_tuple, self.global_step)
-                    # metrics = cur_agent.update(trans_tuple, self.global_step)
-                self.logger.log_metrics(metrics, self.global_frame, ty='train')
-            
+                self.logger.log_metrics(metrics, self.global_frame, ty='train')            
+           
             self._global_step += 1    
            
 
@@ -536,12 +438,6 @@ class Workspace:
         with open(str(self.work_dir / 'trajectory_') + self.cfg.env_name + '.pkl', 'wb') as f:
             pickle.dump(np.array(end_effector), f) 
 
-
-
-        if self.cfg.save_train_video:
-            self.train_video_recorder.save(f'train{self.global_step}.mp4')
-
-                  
     def save_snapshot(self, epoch=None):
         snapshot = self.work_dir / 'snapshot.pt'
         if epoch: snapshot = self.work_dir / f'snapshot{epoch}.pt'
@@ -550,7 +446,6 @@ class Workspace:
         with snapshot.open('wb') as f:
             torch.save(payload, f)
 
-    # Loads the workspace for the single RL non episodic run
     def load_snapshot(self, dirname=None):
         if dirname: 
             payload = torch.load(dirname)
@@ -577,7 +472,6 @@ def main(cfg):
     workspace.agent.load_models()
    
     workspace.train(snapshot_dir)
-    # workspace.train(snapshot_dir)
 
 
 if __name__ == '__main__':

@@ -40,7 +40,7 @@ class SawyerPickPlaceEnvV2(SawyerXYZEnv):
             'hand_init_pos': np.array([0.1, 0.6, .2]),
         }
 
-        self.goal = np.array([0.5, 0.2, 0.2])
+        self.goal = np.array([0.5, 0.7, 0.8])
 
         self.obj_init_angle = self.init_config['obj_init_angle']
         self.obj_init_pos = self.init_config['obj_init_pos']
@@ -187,7 +187,7 @@ class SawyerPickPlaceEnvV2(SawyerXYZEnv):
         tcp_opened = obs[3]
         target = self._target_pos
 
-        obj_to_target = np.linalg.norm(obj - target, 'fro')
+        obj_to_target = np.linalg.norm(obj - target)
         tcp_to_obj = np.linalg.norm(obj - tcp)
         in_place_margin = (np.linalg.norm(self.obj_init_pos - target))
 

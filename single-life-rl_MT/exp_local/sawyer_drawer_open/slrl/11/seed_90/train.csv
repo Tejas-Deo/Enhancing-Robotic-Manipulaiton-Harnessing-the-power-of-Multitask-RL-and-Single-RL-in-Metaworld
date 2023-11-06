@@ -1,0 +1,2 @@
+actor_logprob,actor_loss,alpha_loss,alpha_value,batch_reward,bc_actor_loss,critic_loss,critic_q1,critic_q2,critic_target_q,disc_s,disc_s_acc,disc_s_stk,disc_s_stk_acc,discriminator_acc,discriminator_loss,episode,episode_length,episode_reward,forward_buffer_size,fps,frame,latest_r,original_reward,step,success_avg,total_time
+0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.9267017802254098,0.8172313882434954,2.0,500.0,359.43728223266544,201000.0,14.21648967651587,1000,0.0,0.0,1000.0,0.0,35.17042636871338

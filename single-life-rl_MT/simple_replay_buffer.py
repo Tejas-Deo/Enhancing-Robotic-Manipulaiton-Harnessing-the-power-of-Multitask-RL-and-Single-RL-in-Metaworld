@@ -278,7 +278,7 @@ class SimpleReplayBuffer:
 
             # self._num_transitions = len(idx)
             # pdb.set_trace()
-            q_val_path = '/home/ishan05/StanfordEE/Spring2023/CS224R/CS-224R-Group-Project/tmp/sac-20230528T213910Z-001/sac/qvals.pkl'
+            q_val_path = os.path.dirname(os.path.abspath(__file__)) + '/tmp/sac/qvals.pkl'
             
             if os.path.exists(q_val_path):
                 f = open(q_val_path, 'rb')

@@ -10,7 +10,7 @@ env_names = ['sawyer_pick_place',       #0
             'sawyer_drawer_close',      #4
             'sawyer_button_press',      #5
             'sawyer_push']              #6
-env_idx = 1
+env_idx = 2
 
 title = " ".join([x.capitalize() for x in env_names[env_idx].split('_')])
 

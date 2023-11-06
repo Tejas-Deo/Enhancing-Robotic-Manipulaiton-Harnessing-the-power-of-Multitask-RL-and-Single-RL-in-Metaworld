@@ -58,9 +58,9 @@ class Agent():
         self.update_network_parameters(tau=1)
 
     
-    def choose_action(self, observation):
+    def choose_action(self, observation, deter =True):
         state = torch.Tensor(observation).view(1,-1).to(self.actor.device)
-        actions, _ = self.actor.sample_normal(state, reparameterize=False)
+        actions, _ = self.actor.sample_normal(state, reparameterize=False, deter = deter)
 
         return actions.cpu().detach().numpy()[0]
 
@@ -394,6 +394,7 @@ class ActorNetwork(nn.Module):
         prob = F.relu(prob)
         prob = self.fc2(prob)
         prob = F.relu(prob)
+        # prob = F.relu(prob)
 
         # to predict the mean and std using the same inpui.e. output of fc2
         mu = self.mu(prob) 
@@ -405,10 +406,12 @@ class ActorNetwork(nn.Module):
         return mu, sigma
 
     
-    def sample_normal(self, state, reparameterize=True):
+    def sample_normal(self, state, reparameterize=True , deter=True):
+        
         mu, sigma = self.forward(state)
         probabilities = Normal(mu, sigma)
 
+      
         # to sample the actions from the distribution
         if reparameterize:
             # if we want to add more noise into the sampled action
@@ -426,6 +429,10 @@ class ActorNetwork(nn.Module):
         # to avoid dividing by 0
         log_probs -= torch.log(1-action.pow(2)+self.reparam_noise)
         log_probs = log_probs.sum(1, keepdim=True)
+
+        # if deter == True:
+        #     return mu, log_probs 
+
 
         return action, log_probs
 

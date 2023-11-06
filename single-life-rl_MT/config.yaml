@@ -1,7 +1,7 @@
 # task settings
 num_pretraining_steps: 0
 online_steps: 100000
-env_name: sawyer_push
+env_name: sawyer_window_close
 frame_stack: 1
 action_repeat: 1
 oracle_reset: 1
@@ -21,7 +21,7 @@ replay_buffer_num_workers: 4
 nstep: 1
 batch_size: 256
 # misc
-seed: 425
+seed: 1
 device: cuda
 save_train_video: true
 use_tb: true
@@ -42,7 +42,7 @@ use_demos: true # for rl pretraining: if use demos instead of buffer
 baseline: 0 # use val of latest obs
 alpha: 1 
 task_encoding: cosine
-
+novelty: 11
 
 
 
@@ -65,11 +65,12 @@ discriminator:
   train_interval: 1
   train_steps_per_iteration: 1 
   # replay buffer
-  batch_size: 1024 # try smaller batch size 800
+  batch_size: 512 # try smaller batch size 800
   positive_buffer_size: 100000
   negative_buffer_size: 5000000
   
 hydra:
   output_subdir: hydra
   run:
-    dir: ./exp_local/${env_name}/${now:%Y.%m.%d.%H.%M.%S}/discrim${use_discrim}_qwt${q_weights}_seed${seed}
+    # dir: ./exp_local/${env_name}/${novelty}/time_${now:%Y.%m.%d.%H.%M.%S}/disc_${use_discrim}_qwt_${q_weights}_seed_${seed}
+    dir: ./exp_local/${env_name}/slrl/${novelty}/seed_${seed}

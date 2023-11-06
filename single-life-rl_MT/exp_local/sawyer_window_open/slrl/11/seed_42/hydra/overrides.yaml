@@ -1,0 +1,5 @@
+- use_discrim=True
+- rl_pretraining=True
+- q_weights=True
+- online_steps=100000
+- env_name=sawyer_window_open

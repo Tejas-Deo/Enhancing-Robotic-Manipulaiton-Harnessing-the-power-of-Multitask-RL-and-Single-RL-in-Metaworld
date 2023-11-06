@@ -12,18 +12,38 @@ plt.rcParams.update({'font.size': 18})
 plt.rcParams.update({'text.latex.preamble': 'bold'})
 plt.rc('font', family='serif')
 
-env_names = ['sawyer_pick_place',       #0
-            'sawyer_window_open',       #1
-            'sawyer_window_close',      #2
-            'sawyer_drawer_open',       #3
-            'sawyer_drawer_close',      #4
-            'sawyer_button_press',      #5
-            'sawyer_push']
+slrl_steps = {'sawyer_pick_place':[100000],       
+            'sawyer_window_open':[309,],             
+            'sawyer_window_close':[13340, 50020, 8273],
+            'sawyer_drawer_open': [18585],      
+            'sawyer_drawer_close':[246],      
+            'sawyer_button_press': [5500, 68501],     
+            'sawyer_push':[1115]}
+
+
+slrl_successes = {'sawyer_pick_place':[False],       
+            'sawyer_window_open':[True],             
+            'sawyer_window_close':[True, False, True],
+            'sawyer_drawer_open': [True],      
+            'sawyer_drawer_close':[True],      
+            'sawyer_button_press': [True, True],     
+            'sawyer_push':[True]}
+
+
+
+slrl_steps_masking = {'sawyer_pick_place':[100000],       
+            'sawyer_window_open':[22257],             
+            'sawyer_window_close':[8107],
+            'sawyer_drawer_open': [20754],      
+            'sawyer_drawer_close':[265],      
+            'sawyer_button_press': [112343],     
+            'sawyer_push':[1155]}
+
 
 
 
 # Please check the order
-steps = [100000, 309, 13340, 18585, 2220, 5500, 136]
+# steps = [100000, 309, 13340, 18585, 2220, 5500, 136]
 
 colors = plt.cm.get_cmap('viridis', 3)
 

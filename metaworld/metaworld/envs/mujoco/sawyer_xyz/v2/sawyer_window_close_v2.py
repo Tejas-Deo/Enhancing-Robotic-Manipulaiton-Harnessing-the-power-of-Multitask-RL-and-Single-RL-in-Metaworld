@@ -33,8 +33,8 @@ class SawyerWindowCloseEnvV2(SawyerXYZEnv):
         )
 
         self.init_config = {
-            'obj_init_angle': 0.3,
-            'obj_init_pos': np.array([0.2, 0.885, 0.16], dtype=np.float32),
+            'obj_init_angle': 0.5,
+            'obj_init_pos': np.array([-0.2, 0.785, 0.16], dtype=np.float32),
             'hand_init_pos': np.array([0, 0.4, 0.2], dtype=np.float32),
         }
         self.obj_init_pos = self.init_config['obj_init_pos']
